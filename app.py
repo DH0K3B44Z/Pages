@@ -5,74 +5,63 @@ from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-# Shared state
 shared_data = {
     'tokens': [],
     'comment': '',
-    'name': '',
-    'interval': 10  # default interval in seconds
+    'haters': '',
+    'post_id': '',
+    'interval': 10,
+    'name': ''
 }
 
 HTML = """<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Token & Comment App</title>
-<style>
-    body {
-        font-family: Arial, sans-serif;
-        max-width: 500px;
-        margin: auto;
-        padding: 20px;
-        background: #f9f9f9;
-    }
-    h2 { text-align: center; color: #2c3e50; }
-    label { font-weight: bold; display: block; margin-top: 15px; }
-    textarea, input[type=text], input[type=number], input[type=file], button {
-        width: 100%; padding: 10px; margin-top: 5px; border-radius: 5px; border: 1px solid #ccc;
-    }
-    button {
-        background: #3498db; color: white; border: none; cursor: pointer;
-    }
-    button:hover { background: #2980b9; }
-    .output {
-        background: #ecf0f1;
-        padding: 10px;
-        margin-top: 20px;
-        border-left: 5px solid #3498db;
-        white-space: pre-wrap;
-        font-family: monospace;
-    }
-</style>
+    <title>FB Auto Comment</title>
+    <style>
+        body { font-family: Arial; background: #f4f4f4; max-width: 600px; margin: auto; padding: 20px; }
+        label { font-weight: bold; display: block; margin-top: 10px; }
+        input, textarea, button {
+            width: 100%; padding: 10px; margin-top: 5px;
+            border-radius: 5px; border: 1px solid #ccc;
+        }
+        button { background: #2ecc71; color: white; font-weight: bold; border: none; cursor: pointer; }
+        button:hover { background: #27ae60; }
+        .output { margin-top: 20px; padding: 10px; background: #ecf0f1; border-left: 5px solid #2ecc71; }
+    </style>
 </head>
 <body>
-    <h2>Token + Comment Input</h2>
+    <h2>🔥 Facebook Auto Comment Panel</h2>
     <form method="POST" enctype="multipart/form-data">
-        <label>Your Name:</label>
+        <label>Your Name (optional):</label>
         <input type="text" name="name" value="{{ name }}">
 
-        <label>Interval (in seconds):</label>
-        <input type="number" name="interval" value="{{ interval }}">
+        <label>Haters Name (comment ke start me):</label>
+        <input type="text" name="haters" value="{{ haters }}">
 
-        <label>Tokens (one per line):</label>
+        <label>Post ID:</label>
+        <input type="text" name="post_id" value="{{ post_id }}" required>
+
+        <label>Interval (seconds):</label>
+        <input type="number" name="interval" value="{{ interval }}" min="5">
+
+        <label>Tokens (1 per line):</label>
         <textarea name="tokens_box" rows="5">{{ tokens_text }}</textarea>
 
         <label>Upload Comment File (.txt):</label>
         <input type="file" name="comment_file" accept=".txt">
 
-        <label>Or Type Comment:</label>
-        <textarea name="comment_text" rows="3">{{ comment_text }}</textarea>
-
-        <button type="submit">Submit</button>
+        <button type="submit">✅ Submit</button>
     </form>
 
-    {% if name or interval or tokens or comment_result %}
+    {% if tokens %}
     <div class="output">
-        {% if name %}<b>👤 Name:</b> {{ name }}<br>{% endif %}
-        {% if interval %}<b>⏱ Interval:</b> {{ interval }} seconds<br>{% endif %}
-        {% if tokens %}<b>🔐 Tokens:</b><br>{{ tokens|join('\\n') }}<br>{% endif %}
-        {% if comment_result %}<b>📝 Comment:</b><br>{{ comment_result }}{% endif %}
+        <b>👤 Name:</b> {{ name }}<br>
+        <b>😡 Haters Name:</b> {{ haters }}<br>
+        <b>🆔 Post ID:</b> {{ post_id }}<br>
+        <b>🔁 Interval:</b> {{ interval }} seconds<br>
+        <b>🔐 Tokens:</b><br>{{ tokens|join('<br>') }}<br>
+        <b>📝 Comment:</b><br>{{ comment_result }}
     </div>
     {% endif %}
 </body>
@@ -81,65 +70,71 @@ HTML = """<!DOCTYPE html>
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    tokens_text = ""
-    comment_text = ""
-    name = shared_data.get('name', '')
-    interval = shared_data.get('interval', 10)
-    tokens = shared_data.get('tokens', [])
-    comment_result = shared_data.get('comment', '')
-
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
+        haters = request.form.get('haters', '').strip()
+        post_id = request.form.get('post_id', '').strip()
         interval = int(request.form.get('interval', 10))
-
         tokens_text = request.form.get('tokens_box', '')
-        tokens = [line.strip() for line in tokens_text.strip().split('\n') if line.strip()]
-
+        tokens = [t.strip() for t in tokens_text.strip().split('\n') if t.strip()]
+        
         uploaded_file = request.files.get('comment_file')
-        if uploaded_file and uploaded_file.filename != '':
-            comment_result = uploaded_file.read().decode('utf-8')
-        else:
-            comment_text = request.form.get('comment_text', '')
-            comment_result = comment_text.strip()
+        comment_result = uploaded_file.read().decode('utf-8') if uploaded_file else ''
+        
+        final_comment = f"{haters} {comment_result}".strip()
 
-        # Update shared data
         shared_data.update({
             'name': name,
+            'haters': haters,
+            'post_id': post_id,
             'interval': interval,
             'tokens': tokens,
-            'comment': comment_result
+            'comment': final_comment
         })
 
+        return render_template_string(HTML,
+                                      name=name,
+                                      haters=haters,
+                                      post_id=post_id,
+                                      interval=interval,
+                                      tokens=tokens,
+                                      tokens_text='\n'.join(tokens),
+                                      comment_result=final_comment)
+    
+    # GET request
     return render_template_string(HTML,
-                                  name=name,
-                                  interval=interval,
-                                  tokens=tokens,
-                                  tokens_text='\n'.join(tokens),
-                                  comment_text=comment_text,
-                                  comment_result=comment_result)
+                                  name=shared_data['name'],
+                                  haters=shared_data['haters'],
+                                  post_id=shared_data['post_id'],
+                                  interval=shared_data['interval'],
+                                  tokens=shared_data['tokens'],
+                                  tokens_text='\n'.join(shared_data['tokens']),
+                                  comment_result=shared_data['comment'])
 
-# ✅ HEALTH CHECK ROUTE
 @app.route('/health')
 def health():
-    return 'OK', 200
+    return "OK", 200
 
-# 🔁 BACKGROUND THREAD
 def background_worker():
     while True:
-        tokens = shared_data.get('tokens', [])
-        comment = shared_data.get('comment', '')
-        name = shared_data.get('name', '')
-        interval = shared_data.get('interval', 10)
+        tokens = shared_data['tokens']
+        comment = shared_data['comment']
+        post_id = shared_data['post_id']
+        interval = shared_data['interval']
 
-        if tokens and comment:
-            print(f"[LOOP] Name: {name}, Interval: {interval}s")
+        if tokens and comment and post_id:
+            print(f"[🔁] Posting every {interval}s to Post ID: {post_id}")
             for token in tokens:
-                print(f"➡️ Token: {token} | Comment: {comment}")
-                # 🛠️ Add your logic here (e.g., post to API, log, etc.)
+                print(f"[🚀] Token: {token} → Post ID: {post_id} → Comment: {comment}")
+                # TODO: Add actual Facebook API call here
+        
+        time.sleep(max(5, interval))
 
-        time.sleep(max(5, interval))  # Ensure minimum 5 sec to avoid 502
+# Make sure background thread starts
+def run_background_on_startup():
+    print("✅ Background thread started")
+    threading.Thread(target=background_worker, daemon=True).start()
 
-# 🔁 Start background thread
-threading.Thread(target=background_worker, daemon=True).start()
-
-# ❌ NO app.run() if using Gunicorn
+@app.before_first_request
+def activate_background_worker():
+    run_background_on_startup()
