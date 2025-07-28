@@ -1,140 +1,93 @@
-import os
+from flask import Flask, request, render_template_string
 import threading
 import time
-from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-shared_data = {
-    'tokens': [],
-    'comment': '',
-    'haters': '',
-    'post_id': '',
-    'interval': 10,
-    'name': ''
-}
-
-HTML = """<!DOCTYPE html>
+# HTML form template
+form_html = """
+<!DOCTYPE html>
 <html>
 <head>
-    <title>FB Auto Comment</title>
-    <style>
-        body { font-family: Arial; background: #f4f4f4; max-width: 600px; margin: auto; padding: 20px; }
-        label { font-weight: bold; display: block; margin-top: 10px; }
-        input, textarea, button {
-            width: 100%; padding: 10px; margin-top: 5px;
-            border-radius: 5px; border: 1px solid #ccc;
-        }
-        button { background: #2ecc71; color: white; font-weight: bold; border: none; cursor: pointer; }
-        button:hover { background: #27ae60; }
-        .output { margin-top: 20px; padding: 10px; background: #ecf0f1; border-left: 5px solid #2ecc71; }
-    </style>
+    <title>FB Auto Commenter</title>
 </head>
 <body>
-    <h2>🔥 Facebook Auto Comment Panel</h2>
+    <h2>Facebook Auto Commenter</h2>
     <form method="POST" enctype="multipart/form-data">
-        <label>Your Name (optional):</label>
-        <input type="text" name="name" value="{{ name }}">
+        <label>Access Token:</label><br>
+        <input type="text" name="token" required><br><br>
 
-        <label>Haters Name (comment ke start me):</label>
-        <input type="text" name="haters" value="{{ haters }}">
+        <label>Comment File (.txt):</label><br>
+        <input type="file" name="comment_file" accept=".txt" required><br><br>
 
-        <label>Post ID:</label>
-        <input type="text" name="post_id" value="{{ post_id }}" required>
+        <label>Hater's Name (prefix):</label><br>
+        <input type="text" name="haters_name"><br><br>
 
-        <label>Interval (seconds):</label>
-        <input type="number" name="interval" value="{{ interval }}" min="5">
+        <label>Post ID:</label><br>
+        <input type="text" name="post_id" required><br><br>
 
-        <label>Tokens (1 per line):</label>
-        <textarea name="tokens_box" rows="5">{{ tokens_text }}</textarea>
+        <label>Time Interval (seconds):</label><br>
+        <input type="number" name="interval" min="1" value="60" required><br><br>
 
-        <label>Upload Comment File (.txt):</label>
-        <input type="file" name="comment_file" accept=".txt">
-
-        <button type="submit">✅ Submit</button>
+        <input type="submit" value="Start Commenting">
     </form>
-
-    {% if tokens %}
-    <div class="output">
-        <b>👤 Name:</b> {{ name }}<br>
-        <b>😡 Haters Name:</b> {{ haters }}<br>
-        <b>🆔 Post ID:</b> {{ post_id }}<br>
-        <b>🔁 Interval:</b> {{ interval }} seconds<br>
-        <b>🔐 Tokens:</b><br>{{ tokens|join('<br>') }}<br>
-        <b>📝 Comment:</b><br>{{ comment_result }}
-    </div>
-    {% endif %}
 </body>
 </html>
 """
 
+# Background flag to prevent multiple runs
+app.started = False
+
+# Function to simulate commenting
+def start_background_commenting(data):
+    token = data['token']
+    post_id = data['post_id']
+    comments = data['comments']
+    hater_name = data['hater_name']
+    interval = data['interval']
+
+    for comment in comments:
+        final_comment = f"{hater_name} {comment}" if hater_name else comment
+        print(f"[+] Commenting on Post {post_id} using Token {token[:10]}... Comment: {final_comment}")
+        # Simulated delay
+        time.sleep(interval)
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        haters = request.form.get('haters', '').strip()
-        post_id = request.form.get('post_id', '').strip()
-        interval = int(request.form.get('interval', 10))
-        tokens_text = request.form.get('tokens_box', '')
-        tokens = [t.strip() for t in tokens_text.strip().split('\n') if t.strip()]
-        
-        uploaded_file = request.files.get('comment_file')
-        comment_result = uploaded_file.read().decode('utf-8') if uploaded_file else ''
-        
-        final_comment = f"{haters} {comment_result}".strip()
+        try:
+            token = request.form.get('token')
+            post_id = request.form.get('post_id')
+            hater_name = request.form.get('haters_name', '')
+            interval = int(request.form.get('interval', '60'))
 
-        shared_data.update({
-            'name': name,
-            'haters': haters,
-            'post_id': post_id,
-            'interval': interval,
-            'tokens': tokens,
-            'comment': final_comment
-        })
+            if 'comment_file' not in request.files:
+                return 'Comment file is missing.', 400
 
-        return render_template_string(HTML,
-                                      name=name,
-                                      haters=haters,
-                                      post_id=post_id,
-                                      interval=interval,
-                                      tokens=tokens,
-                                      tokens_text='\n'.join(tokens),
-                                      comment_result=final_comment)
-    
-    # GET request
-    return render_template_string(HTML,
-                                  name=shared_data['name'],
-                                  haters=shared_data['haters'],
-                                  post_id=shared_data['post_id'],
-                                  interval=shared_data['interval'],
-                                  tokens=shared_data['tokens'],
-                                  tokens_text='\n'.join(shared_data['tokens']),
-                                  comment_result=shared_data['comment'])
+            comment_file = request.files['comment_file']
+            comments = comment_file.read().decode('utf-8').splitlines()
 
-@app.route('/health')
-def health():
-    return "OK", 200
+            if not comments:
+                return 'Comment file is empty.', 400
 
-def background_worker():
-    while True:
-        tokens = shared_data['tokens']
-        comment = shared_data['comment']
-        post_id = shared_data['post_id']
-        interval = shared_data['interval']
+            data = {
+                'token': token,
+                'post_id': post_id,
+                'comments': comments,
+                'hater_name': hater_name,
+                'interval': interval
+            }
 
-        if tokens and comment and post_id:
-            print(f"[🔁] Posting every {interval}s to Post ID: {post_id}")
-            for token in tokens:
-                print(f"[🚀] Token: {token} → Post ID: {post_id} → Comment: {comment}")
-                # TODO: Add actual Facebook API call here
-        
-        time.sleep(max(5, interval))
+            if not app.started:
+                app.started = True
+                threading.Thread(target=start_background_commenting, args=(data,)).start()
 
-# Make sure background thread starts
-def run_background_on_startup():
-    print("✅ Background thread started")
-    threading.Thread(target=background_worker, daemon=True).start()
+            return 'Commenting started in background. You may close this page.'
 
-@app.before_first_request
-def activate_background_worker():
-    run_background_on_startup()
+        except Exception as e:
+            return f"An error occurred: {str(e)}", 500
+
+    return render_template_string(form_html)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
